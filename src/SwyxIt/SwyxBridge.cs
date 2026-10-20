@@ -7,7 +7,7 @@ namespace Brim.SwyxIt;
 
 /// <summary>
 /// Übersetzt zwischen SwyxIt! und Brim: Anrufe als Aktivitäten mit Schnellmenü (Stumm, Tastatur, Weiterleiten,
-/// Halten), eine echte Wellenform des Gesprächs, Chats aus SwyxIt! und Swyx Messenger als HUD, Status als Karte.
+/// Halten), ein Lichtschein, der mit der Stimme des Anrufers schwingt, Chats aus SwyxIt! und Swyx Messenger als HUD, Status als Karte.
 /// Alles hier läuft auf dem STA-Thread des Plugins.
 /// </summary>
 internal sealed class SwyxBridge
@@ -22,9 +22,6 @@ internal sealed class SwyxBridge
     /// <summary>So oft wird ein klingelnder Anruf erneuert; Brim lässt kritische Hinweise nach 10 s ablaufen.</summary>
     private static readonly TimeSpan RingRefresh = TimeSpan.FromSeconds(5);
 
-    /// <summary>Balken der Wellenform; bei 3 px Breite und Abstand füllt das die aufgeklappte Notch.</summary>
-    private const int WaveLength = 90;
-
     private enum Panel { None, Dialpad, Transfer }
 
     private readonly BrimPlugin _brim;
@@ -37,7 +34,7 @@ internal sealed class SwyxBridge
     private LineChanges _current = new([], [], []);
     private DateTime _lastRing;
     private int _retry;
-    private double[] _wave = new double[WaveLength];
+    private double _glow;
 
     // Schnellmenü: Tastatur für Tastentöne oder für die Nummer beim Weiterleiten.
     private Panel _panel;
@@ -72,14 +69,22 @@ internal sealed class SwyxBridge
         PublishStatus();
     }
 
-    /// <summary>Etwa 15-mal pro Sekunde: Pegel für die Wellenform, nur solange ein Gespräch läuft und die Notch offen ist.</summary>
-    public void WaveTick()
+    /// <summary>
+    /// Etwa 15-mal pro Sekunde, solange ein Gespräch läuft: Der Lichtschein am unteren Rand schwingt mit der Stimme
+    /// des Anrufers. Gesendet wird nur, wenn er sich sichtbar ändert.
+    /// </summary>
+    public void GlowTick()
     {
-        if (!_brim.NotchExpanded || _panel != Panel.None || _current.Calls.FirstOrDefault(c => c.State == LineState.Active) is not { } call)
+        if (_current.Calls.FirstOrDefault(c => c.State == LineState.Active) is not { } call || _swyx.Transfer?.To == call.Line)
         {
             return;
         }
-        _wave = CallTracker.Push(_wave, _audio.Peak(includeMicrophone: !_swyx.Muted));
+        var glow = CallTracker.Glow(_glow, _audio.Peak());
+        if (Math.Abs(glow - _glow) < 0.02)
+        {
+            return;
+        }
+        _glow = glow;
         Send(_brim.SetActivityAsync(TalkActivity(call)));
     }
 
@@ -154,7 +159,7 @@ internal sealed class SwyxBridge
         }
         if (changes.Calls.Count == 0)
         {
-            _wave = new double[WaveLength];
+            _glow = 0;
         }
         if (!_swyx.IsConnected)
         {
@@ -252,12 +257,17 @@ internal sealed class SwyxBridge
         var status = transferring ? "Leitet weiter …" : dialing ? "Wählt …" : onHold ? "Gehalten" : duration;
         var color = onHold || dialing || transferring ? BrimColors.Slate : BrimColors.Charge;
         var muted = _swyx.Muted;
+        if (onHold || dialing)
+        {
+            _glow = 0;
+        }
         return new ActivityParams
         {
             Id = $"call-{call.Line}",
             Priority = ActivityPriority.Ongoing,
             Rank = 9,
             Accent = BrimColors.Charge,
+            Glow = onHold || dialing ? null : _glow,
             Leading = new IconWidget(muted ? MicrophoneOff : Phone) { Size = 15, Color = muted ? BrimColors.Danger : color },
             Trailing = new TextWidget(status) { Style = TextStyle.Mono, Color = color, AccessibleName = $"Gespräch mit {call.Caller}, {status}" },
             Bead = new IconWidget(Phone) { Size = 14, Color = color, AccessibleName = $"Gespräch mit {call.Caller}" },
@@ -267,7 +277,7 @@ internal sealed class SwyxBridge
         };
     }
 
-    /// <summary>Kopfzeile: Telefon, Name, Nummer, Dauer – darunter die Welle und das Schnellmenü.</summary>
+    /// <summary>Kopfzeile: Telefon, Name, Nummer, Dauer – darunter das Schnellmenü. Die Stimme zeigt der Lichtschein.</summary>
     private Widget TalkView(LineSnapshot call, string status, string color, bool onHold, bool muted) => new StackWidget(
         new StackWidget(
             new IconWidget(Phone) { Size = 22, Color = color },
@@ -284,13 +294,7 @@ internal sealed class SwyxBridge
         {
             Spacing = 12,
         },
-        new WaveWidget(onHold ? new double[WaveLength] : _wave)
-        {
-            Height = 40,
-            Color = muted ? BrimColors.Slate : BrimColors.Charge,
-            AccessibleName = "Pegel des Gesprächs",
-            Grow = 1,
-        },
+        new SpacerWidget { Grow = 1 },
         new StackWidget(
             new ButtonWidget($"mute:{call.Line}")
             {

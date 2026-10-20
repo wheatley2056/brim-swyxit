@@ -89,16 +89,16 @@ public class QuickMenuTests
     }
 
     [Fact]
-    public void Wave_history_shifts_left_and_stays_in_range()
+    public void Glow_rises_at_once_falls_slowly_and_ignores_noise()
     {
-        var history = new double[4];
+        Assert.Equal(0, CallTracker.Glow(0, 0.004));
+        var loud = CallTracker.Glow(0, 0.25);
+        Assert.Equal(0.567, loud, 3);
+        Assert.Equal(1, CallTracker.Glow(loud, 4));
 
-        history = CallTracker.Push(history, 0.25);
-        history = CallTracker.Push(history, 4);
-
-        Assert.Equal(4, history.Length);
-        Assert.Equal(0, history[1]);
-        Assert.Equal(0.575, history[2], 3);
-        Assert.Equal(1, history[3]);
+        // Stille: klingt in einigen Schritten ab statt sofort zu verschwinden.
+        var falling = CallTracker.Glow(loud, 0);
+        Assert.Equal(loud * 0.72, falling, 3);
+        Assert.True(CallTracker.Glow(falling, 0) < falling);
     }
 }

@@ -91,13 +91,14 @@ internal sealed class CallTracker
             gone);
     }
 
-    /// <summary>Pegelverlauf für die Wellenform: neuer Wert rechts, feste Länge, leicht verstärkt (Sprache ist leise).</summary>
-    public static double[] Push(double[] history, double peak)
+    /// <summary>
+    /// Pegel für den Lichtschein: Sprache ist leise, daher verstärkt (Wurzel), unter einem Rauschboden 0.
+    /// Steigt sofort, fällt langsam – so schwingt er mit der Stimme statt zu flackern.
+    /// </summary>
+    public static double Glow(double previous, double peak)
     {
-        var next = new double[history.Length];
-        Array.Copy(history, 1, next, 0, history.Length - 1);
-        next[^1] = Math.Clamp(Math.Sqrt(Math.Max(0, peak)) * 1.15, 0, 1);
-        return next;
+        var level = Math.Clamp((Math.Sqrt(Math.Max(0, peak)) - 0.08) * 1.35, 0, 1);
+        return level >= previous ? level : Math.Max(level, previous * 0.72);
     }
 
     /// <summary>„3:07“ bzw. „1:02:03“.</summary>

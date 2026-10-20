@@ -3,7 +3,7 @@
 Zeigt Anrufe und Chat-Nachrichten aus [SwyxIt!](https://www.enreach.de) in der Notch:
 
 - **Eingehender Anruf:** Die Notch klappt auf und zeigt Name, Nummer und angerufene Gruppe. Daneben stehen **Ablehnen** und **Annehmen**. Klopft während eines Gesprächs ein zweiter Anruf an, erscheint er genauso; Annehmen hält das laufende Gespräch.
-- **Laufendes Gespräch:** In der kompakten Notch steht ein grünes Telefon mit der Dauer, bei stummem Mikrofon ein rotes Symbol. Aufgeklappt läuft eine **echte Wellenform** des Gesprächs, gemessen an den Audio-Sitzungen von SwyxIt!. Darunter das Schnellmenü:
+- **Laufendes Gespräch:** In der kompakten Notch steht ein grünes Telefon mit der Dauer, bei stummem Mikrofon ein rotes Symbol. Spricht der Anrufer, **schwingt der grüne Lichtschein** am unteren Rand der Notch mit seiner Stimme (gemessen an der Wiedergabe von SwyxIt! bzw. dem Client Line Manager; braucht Brim 1.0.1). Aufgeklappt zeigt die Notch das Schnellmenü:
   - **Stumm:** Mikrofon aus/an, wie der Knopf in SwyxIt!.
   - **Tastatur:** Tastentöne ins Gespräch, z. B. für Sprachmenüs.
   - **Weiterleiten:** Eine Tastatur für die Zielnummer erscheint an derselben Stelle. Brim wählt das Ziel auf einer freien Leitung (das Gespräch wird gehalten) und verbindet, sobald es dort klingelt. Ist das Ziel besetzt oder nach 20 s nicht erreichbar, kommt das Gespräch zurück.
