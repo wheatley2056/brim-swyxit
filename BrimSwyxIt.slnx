@@ -1,0 +1,11 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="src/SwyxIt/SwyxIt.csproj">
+    <!-- Swyx-Interop gibt es nur für x86/x64; "Any CPU" baut x64. -->
+    <Platform Solution="*|Any CPU" Project="x64" />
+  </Project>
+  <Project Path="tests/SwyxIt.Tests/SwyxIt.Tests.csproj" />
+</Solution>
