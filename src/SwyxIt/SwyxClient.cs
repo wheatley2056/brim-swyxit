@@ -21,7 +21,8 @@ internal sealed class SwyxClient : IDisposable
     public event Action<IReadOnlyList<LineSnapshot>>? LinesChanged;
     public event Action<ChatItem>? ChatReceived;
 
-    public SwyxClient() => _debounce.Tick += (_, _) => OnDebounce();
+    /// <param name="sta">Thread, dem COM gehört; SwyxIt! meldet seine Ereignisse auf einem eigenen Thread.</param>
+    public SwyxClient(SynchronizationContext sta) => _sta = sta;
 
     public bool IsConnected => _lines is not null;
 
@@ -58,8 +59,10 @@ internal sealed class SwyxClient : IDisposable
 
     private bool _readChat;
 
-    // SwyxIt! meldet viel („etwas hat sich geändert“); gelesen wird einmal, kurz nach der letzten Meldung.
-    private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 80 };
+    // SwyxIt! meldet viel („etwas hat sich geändert“). Bis der STA-Thread zum Lesen kommt, fallen weitere
+    // Meldungen zusammen: höchstens ein Einlesen steht an.
+    private readonly SynchronizationContext _sta;
+    private int _scanPending;
 
     /// <summary>Laufende Weiterleitung, bis das Ziel klingelt oder sie scheitert.</summary>
     public PendingTransfer? Transfer { get; private set; }
@@ -118,15 +121,15 @@ internal sealed class SwyxClient : IDisposable
     /// </summary>
     private void OnNotification(int message, int param)
     {
-        if (!_debounce.Enabled)
+        if (Interlocked.Exchange(ref _scanPending, 1) == 0)
         {
-            _debounce.Start();
+            _sta.Post(_ => OnPendingScan(), null);
         }
     }
 
-    private void OnDebounce()
+    private void OnPendingScan()
     {
-        _debounce.Stop();
+        Volatile.Write(ref _scanPending, 0);
         Guard(() =>
         {
             Scan();
@@ -365,7 +368,7 @@ internal sealed class SwyxClient : IDisposable
             UnregisterChat();
             Marshal.FinalReleaseComObject(_manager);
         }
-        _debounce.Stop();
+
         _manager = null;
         _lines = null;
         _chatReader = 0;
@@ -375,6 +378,5 @@ internal sealed class SwyxClient : IDisposable
     public void Dispose()
     {
         Disconnect();
-        _debounce.Dispose();
     }
 }

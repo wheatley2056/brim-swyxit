@@ -26,7 +26,7 @@ internal sealed class SwyxBridge
 
     private readonly BrimPlugin _brim;
     private readonly SynchronizationContext _sta;
-    private readonly SwyxClient _swyx = new();
+    private readonly SwyxClient _swyx;
     private readonly CallAudio _audio = new();
     private readonly CallTracker _tracker = new();
     private readonly List<ChatItem> _chats = [];
@@ -34,6 +34,7 @@ internal sealed class SwyxBridge
     private LineChanges _current = new([], [], []);
     private DateTime _lastRing;
     private int _retry;
+    private int _idleScan;
     private double _glow;
 
     // Schnellmenü: Tastatur für Tastentöne oder für die Nummer beim Weiterleiten.
@@ -46,6 +47,7 @@ internal sealed class SwyxBridge
     {
         _brim = brim;
         _sta = sta;
+        _swyx = new SwyxClient(sta);
         _swyx.LinesChanged += OnLines;
         _swyx.ChatReceived += OnChat;
         _swyx.Problem += message => ShowNotice(message);
@@ -123,8 +125,10 @@ internal sealed class SwyxBridge
             }
             return;
         }
-        // Weiterleitung braucht auch ohne Meldung von SwyxIt! einen Blick (Zeitlimit).
-        if (_swyx.Transfer is not null)
+        // Selbst nachsehen, falls eine Meldung von SwyxIt! verloren geht (z. B. Annehmen am Headset): solange etwas
+        // klingelt, läuft oder weitergeleitet wird jede Sekunde, sonst alle 3 Sekunden.
+        var busy = _swyx.Transfer is not null || _current.Incoming.Count > 0 || _current.Calls.Count > 0;
+        if (busy || ++_idleScan % 3 == 0)
         {
             _swyx.Scan();
         }
