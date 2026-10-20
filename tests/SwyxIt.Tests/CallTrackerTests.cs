@@ -8,7 +8,7 @@ public class CallTrackerTests
         new(index, state, name, number, "Vertrieb", outgoing, null);
 
     [Fact]
-    public void Ringing_and_knocking_are_incoming_but_not_own_calls()
+    public void Ringing_and_knocking_are_incoming_outgoing_ringing_is_an_own_call()
     {
         var tracker = new CallTracker();
 
@@ -17,10 +17,34 @@ public class CallTrackerTests
             Line(1, LineState.Knocking),
             Line(2, LineState.Ringing, outgoing: true),
             Line(3, LineState.Inactive),
+            Line(4, LineState.HookOffInternal),
         ]);
 
         Assert.Equal([1], changes.Incoming.Select(c => c.Line));
-        Assert.Equal([0], changes.Calls.Select(c => c.Line));
+        // Ausgehend klingeln und Hörer abgehoben sind eigene Anrufe (Widget zeigt „Klingelt …“ bzw. „Wählen …“).
+        Assert.Equal([0, 2, 4], changes.Calls.Select(c => c.Line));
+    }
+
+    [Theory]
+    [InlineData((int)LineState.HookOffExternal, false, "Wählen …")]
+    [InlineData((int)LineState.Dialing, true, "Wählt …")]
+    [InlineData((int)LineState.Alerting, true, "Klingelt …")]
+    [InlineData((int)LineState.Ringing, true, "Klingelt …")]
+    [InlineData((int)LineState.Busy, true, "Besetzt")]
+    [InlineData((int)LineState.OnHold, false, "Gehalten")]
+    public void Every_phase_of_a_call_has_a_status(int state, bool outgoing, string expected)
+    {
+        Assert.Equal(expected, CallTracker.Status(Line(0, (LineState)state, outgoing: outgoing), DateTime.Now));
+    }
+
+    [Fact]
+    public void Talking_shows_the_duration_and_names_read_naturally()
+    {
+        var now = new DateTime(2026, 10, 20, 12, 0, 0);
+        var call = new LineSnapshot(0, LineState.Active, "Anna", "1", "", false, now.AddSeconds(-187));
+        Assert.Equal("3:07", CallTracker.Status(call, now));
+        Assert.Equal("Tobias Kern", CallTracker.PersonName("Kern , Tobias"));
+        Assert.Equal("Anna Berg", CallTracker.PersonName("Anna Berg"));
     }
 
     [Fact]

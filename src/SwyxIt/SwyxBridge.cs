@@ -56,6 +56,7 @@ internal sealed class SwyxBridge
         _brim.NotificationPosted += n => _sta.Post(_ => OnChat(new ChatItem(n.Title, n.Body, DateTime.Now, Messenger: true)), null);
         _audio.LevelChanged += level => _sta.Post(_ => OnLevel(level), null);
         _brim.SettingsChanged += _ => _sta.Post(_ => ApplySettings(), null);
+        _brim.WidgetsPlaced += _ => _sta.Post(_ => PublishWidgets(), null);
         _brim.NotchExpandedChanged += expanded => _sta.Post(_ =>
         {
             if (!expanded)
@@ -136,6 +137,10 @@ internal sealed class SwyxBridge
         {
             Send(_brim.SetActivityAsync(TalkActivity(call)));
         }
+        if (_current.Calls.Count > 0 || _current.Incoming.Count > 0)
+        {
+            PublishWidgets();
+        }
         if (_current.Incoming.Count > 0 && DateTime.UtcNow - _lastRing >= RingRefresh)
         {
             _lastRing = DateTime.UtcNow;
@@ -188,6 +193,10 @@ internal sealed class SwyxBridge
         if (!_swyx.IsConnected)
         {
             PublishStatus();
+        }
+        else
+        {
+            PublishWidgets();
         }
     }
 
@@ -274,11 +283,10 @@ internal sealed class SwyxBridge
 
     private ActivityParams TalkActivity(LineSnapshot call)
     {
-        var onHold = call.State is LineState.OnHold or LineState.ConferenceOnHold;
-        var dialing = call.State is LineState.Dialing or LineState.Alerting;
+        var onHold = call.IsOnHold;
+        var dialing = call.IsDialing || call.State == LineState.Busy;
         var transferring = _swyx.Transfer?.From == call.Line;
-        var duration = call.Connected is { } start ? CallTracker.Duration(DateTime.Now - start) : "";
-        var status = transferring ? "Leitet weiter …" : dialing ? "Wählt …" : onHold ? "Gehalten" : duration;
+        var status = transferring ? "Leitet weiter …" : CallTracker.Status(call, DateTime.Now);
         var color = onHold || dialing || transferring ? BrimColors.Slate : BrimColors.Charge;
         var muted = _swyx.Muted;
         if (onHold || dialing)
@@ -399,7 +407,7 @@ internal sealed class SwyxBridge
             new StackWidget(
                 new IconWidget(Phone) { Size = 14, Color = _swyx.IsConnected ? BrimColors.Charge : BrimColors.Slate },
                 new TextWidget("SwyxIt!") { Grow = 1 },
-                new TextWidget(_swyx.IsConnected ? _swyx.User ?? "Verbunden" : "läuft nicht") { Style = TextStyle.Caption, FontSize = 12 })
+                new TextWidget(_swyx.IsConnected ? _swyx.User is { } user ? CallTracker.PersonName(user) : "Verbunden" : "läuft nicht") { Style = TextStyle.Caption, FontSize = 12 })
             {
                 Spacing = 8,
             },
@@ -418,6 +426,7 @@ internal sealed class SwyxBridge
         {
             rows.Add(new StackWidget(new ButtonWidget("open-chat") { Kind = ButtonKind.Secondary, Label = "Chat öffnen" }) { Justify = Justify.End });
         }
+        PublishWidgets();
         Send(_brim.SetViewAsync("status", new StackWidget(rows)
         {
             Orientation = StackOrientation.Vertical,
@@ -427,6 +436,151 @@ internal sealed class SwyxBridge
             CornerRadius = 14,
             Padding = (12, 10, 12, 10),
         }));
+    }
+
+    // ───────── Widgets für „Jetzt“ ─────────
+
+    /// <summary>Telefon und Chats, nur in den Größen, die auf „Jetzt“ liegen.</summary>
+    private void PublishWidgets()
+    {
+        foreach (var (id, sizes) in _brim.PlacedWidgets)
+        {
+            foreach (var size in sizes)
+            {
+                Widget? content = id switch
+                {
+                    "phone" => PhoneWidget(size),
+                    "chats" => ChatsWidget(size),
+                    _ => null,
+                };
+                if (content is not null)
+                {
+                    Send(_brim.SetWidgetAsync(id, size, content));
+                }
+            }
+        }
+    }
+
+    private Widget PhoneWidget(TileSize size)
+    {
+        var call = _current.Calls.FirstOrDefault(c => c.State == LineState.Active) ?? _current.Calls.FirstOrDefault();
+        var ringing = _current.Incoming.FirstOrDefault();
+        if (call is null && ringing is null)
+        {
+            var state = !_swyx.IsConnected ? "SwyxIt! läuft nicht" : _swyx.User is { } user ? $"Bereit · {CallTracker.PersonName(user)}" : "Bereit";
+            return new StackWidget(
+                new IconWidget(Phone) { Size = size == TileSize.Small ? 20 : 22, Color = _swyx.IsConnected ? BrimColors.Charge : BrimColors.Slate },
+                new TextWidget(size == TileSize.Small ? (_swyx.IsConnected ? "Bereit" : "Aus") : state) { Style = TextStyle.Secondary, Grow = 1 })
+            {
+                Spacing = 10,
+            };
+        }
+        if (ringing is not null)
+        {
+            var name = new TextWidget(ringing.Caller) { Style = TextStyle.Title, FontSize = 15 };
+            var buttons = new StackWidget(
+                new ButtonWidget($"decline:{ringing.Line}") { Glyph = HangUpGlyph, GlyphColor = BrimColors.Danger, Size = 36, GlyphSize = 15, AccessibleName = "Ablehnen" },
+                new ButtonWidget($"answer:{ringing.Line}") { Glyph = Phone, GlyphColor = BrimColors.Charge, Size = 36, GlyphSize = 15, AccessibleName = "Annehmen" })
+            {
+                Spacing = 6,
+            };
+            return size == TileSize.Small
+                ? new StackWidget(new IconWidget(Phone) { Size = 18, Color = BrimColors.Charge }, new TextWidget("Anruf") { Grow = 1 }) { Spacing = 8 }
+                : new StackWidget(
+                    new StackWidget(name, new TextWidget("ruft an") { Style = TextStyle.Secondary, FontSize = 12 })
+                    {
+                        Orientation = StackOrientation.Vertical,
+                        Align = CrossAlign.Start,
+                        Grow = 1,
+                    },
+                    buttons)
+                {
+                    Spacing = 10,
+                };
+        }
+        var c = call!;
+        var onHold = c.IsOnHold;
+        var status = _swyx.Transfer?.From == c.Line ? "Leitet weiter …" : CallTracker.Status(c, DateTime.Now);
+        var color = c.State == LineState.Busy ? BrimColors.Danger : onHold || c.IsDialing ? BrimColors.Slate : BrimColors.Charge;
+        if (size == TileSize.Small)
+        {
+            return new StackWidget(
+                new IconWidget(Phone) { Size = 16, Color = color },
+                new TextWidget(status) { Style = TextStyle.Mono, Color = color })
+            {
+                Orientation = StackOrientation.Vertical,
+                Spacing = 4,
+            };
+        }
+        var muted = _swyx.Muted;
+        var header = new StackWidget(
+            new StackWidget(
+                new TextWidget(c.Caller) { Style = TextStyle.Title, FontSize = 15 },
+                new TextWidget(c.Number.Trim().Length > 0 && c.Name.Trim().Length > 0 ? c.Number : "Gespräch") { Style = TextStyle.Secondary, FontSize = 12 })
+            {
+                Orientation = StackOrientation.Vertical,
+                Align = CrossAlign.Start,
+                Grow = 1,
+            },
+            new TextWidget(status) { Style = TextStyle.Mono, Color = color });
+        var hangUp = new ButtonWidget($"hangup:{c.Line}") { Glyph = HangUpGlyph, GlyphColor = BrimColors.Danger, Size = 34, GlyphSize = 14, AccessibleName = "Auflegen" };
+        if (size != TileSize.Large)
+        {
+            return new StackWidget(header with { Grow = 1 }, hangUp) { Spacing = 8 };
+        }
+        return new StackWidget(
+            header,
+            new SpacerWidget { Grow = 1 },
+            new StackWidget(
+                new ButtonWidget($"mute:{c.Line}") { Glyph = muted ? MicrophoneOff : Microphone, GlyphColor = muted ? BrimColors.Danger : BrimColors.Fog, Size = 34, GlyphSize = 14, AccessibleName = muted ? "Mikrofon einschalten" : "Stummschalten" },
+                new ButtonWidget($"hold:{c.Line}") { Kind = ButtonKind.Secondary, Label = onHold ? "Fortsetzen" : "Halten" },
+                new SpacerWidget { Grow = 1 },
+                hangUp)
+            {
+                Spacing = 8,
+            })
+        {
+            Orientation = StackOrientation.Vertical,
+            Align = CrossAlign.Stretch,
+        };
+    }
+
+    private Widget ChatsWidget(TileSize size)
+    {
+        var count = size == TileSize.Large ? 4 : 1;
+        var rows = new List<Widget>();
+        foreach (var chat in _chats.Take(count))
+        {
+            rows.Add(new StackWidget(
+                new TextWidget(chat.From) { FontSize = 12, Style = TextStyle.Title, FixedWidth = 90 },
+                new TextWidget(chat.Text) { Style = TextStyle.Secondary, FontSize = 12, Grow = 1 },
+                new TextWidget(chat.Received.ToString("HH:mm")) { Style = TextStyle.MonoCaption })
+            {
+                Spacing = 8,
+            });
+        }
+        if (rows.Count == 0)
+        {
+            rows.Add(new StackWidget(
+                new IconWidget(Chat) { Size = 18, Color = BrimColors.Slate },
+                new TextWidget("Keine neuen Nachrichten") { Style = TextStyle.Secondary, Grow = 1 })
+            {
+                Spacing = 10,
+            });
+        }
+        if (size == TileSize.Large && _swyx.IsConnected)
+        {
+            rows.Add(new SpacerWidget { Grow = 1 });
+            rows.Add(new StackWidget(new ButtonWidget("open-chat") { Kind = ButtonKind.Secondary, Label = "Chat öffnen" }) { Justify = Justify.End });
+        }
+        return new StackWidget(rows)
+        {
+            Orientation = StackOrientation.Vertical,
+            Align = CrossAlign.Stretch,
+            Justify = size == TileSize.Large ? Justify.Start : Justify.Center,
+            Spacing = 6,
+            Grow = 1,
+        };
     }
 
     // ───────── Aktionen ─────────

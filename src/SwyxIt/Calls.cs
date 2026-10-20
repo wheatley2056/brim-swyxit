@@ -25,9 +25,19 @@ internal sealed record LineSnapshot(int Line, LineState State, string Name, stri
     /// <summary>Klingelt (oder klopft an) und ist kein eigener Anruf.</summary>
     public bool IsIncoming => State is LineState.Ringing or LineState.Knocking && !Outgoing;
 
-    /// <summary>Gespräch läuft oder wird gehalten.</summary>
+    /// <summary>
+    /// Eigener Anruf in irgendeiner Phase: Hörer abgehoben, wählen, beim Gegenüber klingeln (manche Anlagen melden
+    /// das als „Ringing“ mit „ausgehend“), besetzt, Gespräch, gehalten.
+    /// </summary>
     public bool IsCall => State is LineState.Active or LineState.OnHold or LineState.ConferenceActive or LineState.ConferenceOnHold
-        or LineState.Alerting or LineState.Dialing;
+        or LineState.Alerting or LineState.Dialing or LineState.HookOffInternal or LineState.HookOffExternal or LineState.Busy
+        || State is LineState.Ringing && Outgoing;
+
+    /// <summary>Noch kein Gespräch: wählen oder warten, bis abgenommen wird.</summary>
+    public bool IsDialing => State is LineState.Dialing or LineState.Alerting or LineState.HookOffInternal or LineState.HookOffExternal
+        || State is LineState.Ringing && Outgoing;
+
+    public bool IsOnHold => State is LineState.OnHold or LineState.ConferenceOnHold;
 
     /// <summary>Anzeigename: Name, sonst Nummer, sonst „Unbekannt“.</summary>
     public string Caller => Name.Trim() is { Length: > 0 } name ? name : Number.Trim() is { Length: > 0 } number ? number : "Unbekannt";
@@ -99,6 +109,24 @@ internal sealed class CallTracker
     {
         var level = Math.Clamp((Math.Sqrt(Math.Max(0, peak)) - 0.08) * 1.35, 0, 1);
         return level >= previous ? level : Math.Max(level, previous * 0.72);
+    }
+
+    /// <summary>Was die Notch und das Widget zum Zustand einer Leitung sagen.</summary>
+    public static string Status(LineSnapshot call, DateTime now) => call.State switch
+    {
+        LineState.HookOffInternal or LineState.HookOffExternal => "Wählen …",
+        LineState.Dialing => "Wählt …",
+        LineState.Alerting or LineState.Ringing => "Klingelt …",
+        LineState.Busy => "Besetzt",
+        LineState.OnHold or LineState.ConferenceOnHold => "Gehalten",
+        _ => call.Connected is { } start ? Duration(now - start) : "Verbunden",
+    };
+
+    /// <summary>„Kern, Tobias“ (so meldet SwyxIt! den Benutzer) als „Tobias Kern“.</summary>
+    public static string PersonName(string name)
+    {
+        var parts = name.Split(',', 2, StringSplitOptions.TrimEntries);
+        return parts.Length == 2 && parts[0].Length > 0 && parts[1].Length > 0 ? $"{parts[1]} {parts[0]}" : name.Trim();
     }
 
     /// <summary>„3:07“ bzw. „1:02:03“.</summary>

@@ -1,12 +1,16 @@
 {
   "id": "de.brim.swyxit",
   "name": "SwyxIt!",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "entry": "BrimSwyxIt.exe",
   "api": "1",
   "slots": ["compact.leading", "compact.trailing", "hud", "expanded.tab"],
   "permissions": ["alerts", "notifications"],
   "notificationApps": ["Swyx Messenger"],
+  "widgets": [
+    { "id": "phone", "name": "Telefon", "description": "Anruf mit Annehmen, Auflegen, Stumm und Halten", "glyph": "\uE717", "sizes": ["medium", "small", "large"] },
+    { "id": "chats", "name": "Chats", "description": "Neueste Nachrichten aus SwyxIt! und Swyx Messenger", "glyph": "\uE8BD", "sizes": ["medium", "large"] }
+  ],
   "settings": [
     { "key": "chat", "type": "bool", "label": "Chat-Nachrichten zeigen", "default": true },
     { "key": "glow", "type": "bool", "label": "Lichtschein schwingt mit der Stimme", "default": true },

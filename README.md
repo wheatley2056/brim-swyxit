@@ -8,6 +8,7 @@ Zeigt Anrufe und Chat-Nachrichten aus [SwyxIt!](https://www.enreach.de) in der N
   - **Tastatur:** Tastentöne ins Gespräch, z. B. für Sprachmenüs.
   - **Weiterleiten:** Eine Tastatur für die Zielnummer erscheint an derselben Stelle. Brim wählt das Ziel auf einer freien Leitung (das Gespräch wird gehalten) und verbindet, sobald es dort klingelt. Ist das Ziel besetzt oder nach 20 s nicht erreichbar, kommt das Gespräch zurück.
   - **Halten/Fortsetzen** und **Auflegen**.
+- **Widgets für „Jetzt“** (Brim 1.2): **Telefon** (klein, mittel, groß) zeigt den Anruf mit Annehmen, Ablehnen, Auflegen, Stumm und Halten, sonst „Bereit“; **Chats** (mittel, groß) die neuesten Nachrichten mit „Chat öffnen“. Hinzufügen: „Jetzt“ lange drücken oder rechts anklicken, dann „+“.
 - **Chat:** Neue Nachrichten aus **Swyx Messenger** (und auf Wunsch aus dem klassischen SwyxIt!-Chat) erscheinen kurz als HUD. Die letzten fünf stehen im Tab „Plugins“, mit **Chat öffnen**.
 
 Das Plugin spricht die offizielle COM-Schnittstelle von SwyxIt! (Client Line Manager, NuGet `Swyx.Client.ClmgrAPI`). SwyxIt! muss dazu laufen; das Plugin startet es nicht selbst und verbindet sich, sobald es da ist.
