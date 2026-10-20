@@ -283,11 +283,10 @@ internal sealed class SwyxBridge
 
     private ActivityParams TalkActivity(LineSnapshot call)
     {
-        var onHold = call.State is LineState.OnHold or LineState.ConferenceOnHold;
-        var dialing = call.State is LineState.Dialing or LineState.Alerting;
+        var onHold = call.IsOnHold;
+        var dialing = call.IsDialing || call.State == LineState.Busy;
         var transferring = _swyx.Transfer?.From == call.Line;
-        var duration = call.Connected is { } start ? CallTracker.Duration(DateTime.Now - start) : "";
-        var status = transferring ? "Leitet weiter …" : dialing ? "Wählt …" : onHold ? "Gehalten" : duration;
+        var status = transferring ? "Leitet weiter …" : CallTracker.Status(call, DateTime.Now);
         var color = onHold || dialing || transferring ? BrimColors.Slate : BrimColors.Charge;
         var muted = _swyx.Muted;
         if (onHold || dialing)
@@ -408,7 +407,7 @@ internal sealed class SwyxBridge
             new StackWidget(
                 new IconWidget(Phone) { Size = 14, Color = _swyx.IsConnected ? BrimColors.Charge : BrimColors.Slate },
                 new TextWidget("SwyxIt!") { Grow = 1 },
-                new TextWidget(_swyx.IsConnected ? _swyx.User ?? "Verbunden" : "läuft nicht") { Style = TextStyle.Caption, FontSize = 12 })
+                new TextWidget(_swyx.IsConnected ? _swyx.User is { } user ? CallTracker.PersonName(user) : "Verbunden" : "läuft nicht") { Style = TextStyle.Caption, FontSize = 12 })
             {
                 Spacing = 8,
             },
@@ -468,7 +467,7 @@ internal sealed class SwyxBridge
         var ringing = _current.Incoming.FirstOrDefault();
         if (call is null && ringing is null)
         {
-            var state = !_swyx.IsConnected ? "SwyxIt! läuft nicht" : _swyx.User is { } user ? $"Bereit · {user}" : "Bereit";
+            var state = !_swyx.IsConnected ? "SwyxIt! läuft nicht" : _swyx.User is { } user ? $"Bereit · {CallTracker.PersonName(user)}" : "Bereit";
             return new StackWidget(
                 new IconWidget(Phone) { Size = size == TileSize.Small ? 20 : 22, Color = _swyx.IsConnected ? BrimColors.Charge : BrimColors.Slate },
                 new TextWidget(size == TileSize.Small ? (_swyx.IsConnected ? "Bereit" : "Aus") : state) { Style = TextStyle.Secondary, Grow = 1 })
@@ -500,10 +499,9 @@ internal sealed class SwyxBridge
                 };
         }
         var c = call!;
-        var onHold = c.State is LineState.OnHold or LineState.ConferenceOnHold;
-        var duration = c.Connected is { } start ? CallTracker.Duration(DateTime.Now - start) : "…";
-        var status = onHold ? "Gehalten" : duration;
-        var color = onHold ? BrimColors.Slate : BrimColors.Charge;
+        var onHold = c.IsOnHold;
+        var status = _swyx.Transfer?.From == c.Line ? "Leitet weiter …" : CallTracker.Status(c, DateTime.Now);
+        var color = c.State == LineState.Busy ? BrimColors.Danger : onHold || c.IsDialing ? BrimColors.Slate : BrimColors.Charge;
         if (size == TileSize.Small)
         {
             return new StackWidget(
