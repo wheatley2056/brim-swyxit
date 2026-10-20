@@ -8,7 +8,7 @@ Zeigt Anrufe und Chat-Nachrichten aus [SwyxIt!](https://www.enreach.de) in der N
   - **Tastatur:** Tastentöne ins Gespräch, z. B. für Sprachmenüs.
   - **Weiterleiten:** Eine Tastatur für die Zielnummer erscheint an derselben Stelle. Brim wählt das Ziel auf einer freien Leitung (das Gespräch wird gehalten) und verbindet, sobald es dort klingelt. Ist das Ziel besetzt oder nach 20 s nicht erreichbar, kommt das Gespräch zurück.
   - **Halten/Fortsetzen** und **Auflegen**.
-- **Chat:** Neue Nachrichten aus dem klassischen SwyxIt!-Chat und aus **Swyx Messenger** erscheinen kurz als HUD. Die letzten fünf stehen im Tab „Plugins“, mit **Chat öffnen**.
+- **Chat:** Neue Nachrichten aus **Swyx Messenger** (und auf Wunsch aus dem klassischen SwyxIt!-Chat) erscheinen kurz als HUD. Die letzten fünf stehen im Tab „Plugins“, mit **Chat öffnen**.
 
 Das Plugin spricht die offizielle COM-Schnittstelle von SwyxIt! (Client Line Manager, NuGet `Swyx.Client.ClmgrAPI`). SwyxIt! muss dazu laufen; das Plugin startet es nicht selbst und verbindet sich, sobald es da ist.
 
@@ -37,7 +37,11 @@ Ab Version 1.1 fragt das Plugin nach dem zweiten Recht. Nach dem Update ist es d
 
 **Swyx Messenger** hat keine eigene Schnittstelle. Das Plugin bekommt seine Nachrichten über die Windows-Benachrichtigungen. Dafür muss Brim einmal eingerichtet sein (Einstellungen → Kalender und Benachrichtigungen), und Windows muss Brim den Zugriff auf Benachrichtigungen erlauben. Erkannt wird die App am Namen „Swyx Messenger“. Heißt sie bei dir anders (Info-Center), trag den Namen in `plugin.json` unter `notificationApps` ein.
 
-Chat-Hinweise abschalten: in `settings.json` unter `Plugins` → `de.brim.swyxit` → `Values` den Wert `"chat": false` setzen.
+Einstellungen (Brim → Einstellungen → Plugins → SwyxIt!):
+
+- **Chat-Nachrichten zeigen** (an): Hinweise zu neuen Nachrichten.
+- **Lichtschein schwingt mit der Stimme** (an): misst während eines Gesprächs den Ton von SwyxIt!. Aus, wenn der Ton bei dir darunter leidet.
+- **Chats aus SwyxIt! mitlesen** (aus): meldet sich bei SwyxIt! als Leser des klassischen Chats an. Das kann SwyxIt!s eigene Chat-Anzeige stören, darum nur bei Bedarf. Nachrichten werden dabei nicht als gelesen bestätigt.
 
 ## Wenn etwas nicht klappt
 

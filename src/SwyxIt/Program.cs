@@ -29,10 +29,6 @@ internal static class Program
         using var timer = new System.Windows.Forms.Timer { Interval = 1000 };
         timer.Tick += (_, _) => bridge.Tick();
         timer.Start();
-        // Lichtschein: etwa 15 Pegel pro Sekunde, Brim gleitet dazwischen weich.
-        using var glow = new System.Windows.Forms.Timer { Interval = 66 };
-        glow.Tick += (_, _) => bridge.GlowTick();
-        glow.Start();
         bridge.Start();
         Application.Run();
 

@@ -21,23 +21,45 @@ internal sealed class SwyxClient : IDisposable
     public event Action<IReadOnlyList<LineSnapshot>>? LinesChanged;
     public event Action<ChatItem>? ChatReceived;
 
+    public SwyxClient() => _debounce.Tick += (_, _) => OnDebounce();
+
     public bool IsConnected => _lines is not null;
 
-    /// <summary>Mikrofon stumm (gilt für alle Leitungen, wie der Knopf in SwyxIt!).</summary>
-    public bool Muted
+    /// <summary>
+    /// Mikrofon stumm (gilt für alle Leitungen, wie der Knopf in SwyxIt!). Gemerkt beim Einlesen, damit der
+    /// Lichtschein SwyxIt! nicht ständig fragt – jeder Aufruf geht in den CLMgr, der auch den Ton macht.
+    /// </summary>
+    public bool Muted { get; private set; }
+
+    /// <summary>
+    /// SwyxIt!-Chats mitlesen. Aus, solange nicht eingeschaltet: Ein angemeldeter Leser kann SwyxIt!s eigene
+    /// Chat-Anzeige stören. Swyx Messenger kommt ohnehin über die Windows-Benachrichtigungen.
+    /// </summary>
+    public bool ReadChat
     {
-        get
+        get => _readChat;
+        set
         {
-            try
+            if (_readChat == value)
             {
-                return _lines is { } lines && lines.DispMicroEnabled == 0;
+                return;
             }
-            catch (COMException)
+            _readChat = value;
+            if (value)
             {
-                return false;
+                RegisterChat();
+            }
+            else
+            {
+                UnregisterChat();
             }
         }
     }
+
+    private bool _readChat;
+
+    // SwyxIt! meldet viel („etwas hat sich geändert“); gelesen wird einmal, kurz nach der letzten Meldung.
+    private readonly System.Windows.Forms.Timer _debounce = new() { Interval = 80 };
 
     /// <summary>Laufende Weiterleitung, bis das Ziel klingelt oder sie scheitert.</summary>
     public PendingTransfer? Transfer { get; private set; }
@@ -66,13 +88,9 @@ internal sealed class SwyxClient : IDisposable
             _manager = new ClientLineMgrClass();
             _lines = _manager;
             ((IClientLineMgrEventsDisp_Event)_manager).DispOnLineMgrNotification += OnNotification;
-            try
+            if (_readChat)
             {
-                _chatReader = _lines.DispRegisterChatMessageReader();
-            }
-            catch (COMException ex)
-            {
-                Console.Error.WriteLine($"Chat nicht verfügbar: {ex.Message}");
+                RegisterChat();
             }
             try
             {
@@ -100,11 +118,51 @@ internal sealed class SwyxClient : IDisposable
     /// </summary>
     private void OnNotification(int message, int param)
     {
+        if (!_debounce.Enabled)
+        {
+            _debounce.Start();
+        }
+    }
+
+    private void OnDebounce()
+    {
+        _debounce.Stop();
         Guard(() =>
         {
             Scan();
             DrainChat();
         });
+    }
+
+    private void RegisterChat()
+    {
+        if (_lines is not { } lines || _chatReader != 0)
+        {
+            return;
+        }
+        try
+        {
+            _chatReader = lines.DispRegisterChatMessageReader();
+        }
+        catch (COMException ex)
+        {
+            Console.Error.WriteLine($"Chat nicht verfügbar: {ex.Message}");
+        }
+    }
+
+    private void UnregisterChat()
+    {
+        if (_lines is { } lines && _chatReader != 0)
+        {
+            try
+            {
+                lines.DispUnRegisterChatMessageReader(_chatReader);
+            }
+            catch (Exception ex) when (ex is COMException or InvalidComObjectException)
+            {
+            }
+        }
+        _chatReader = 0;
     }
 
     public void Scan()
@@ -115,6 +173,7 @@ internal sealed class SwyxClient : IDisposable
         }
         Guard(() =>
         {
+            Muted = lines.DispMicroEnabled == 0;
             var snapshots = new List<LineSnapshot>();
             for (var i = 0; i < lines.DispNumberOfLines; i++)
             {
@@ -189,14 +248,8 @@ internal sealed class SwyxClient : IDisposable
             {
                 return;
             }
+            // Nicht bestätigen: Die Vorschau in Brim heißt nicht, dass die Nachricht gelesen ist.
             ChatReceived?.Invoke(new ChatItem(message.DispPeerName ?? "", message.DispMessageText ?? "", DateTime.Now));
-            try
-            {
-                lines.DispAcknowledgeChatMessage(message.DispMessageId, message.DispPeerName, message.DispPeerIpAddress);
-            }
-            catch (COMException)
-            {
-            }
         }
     }
 
@@ -238,6 +291,7 @@ internal sealed class SwyxClient : IDisposable
         if (_lines is { } lines)
         {
             lines.DispMicroEnabled = lines.DispMicroEnabled == 0 ? 1 : 0;
+            Muted = lines.DispMicroEnabled == 0;
         }
     });
 
@@ -304,21 +358,23 @@ internal sealed class SwyxClient : IDisposable
             try
             {
                 ((IClientLineMgrEventsDisp_Event)_manager).DispOnLineMgrNotification -= OnNotification;
-                if (_chatReader != 0)
-                {
-                    _lines?.DispUnRegisterChatMessageReader(_chatReader);
-                }
             }
             catch (Exception ex) when (ex is COMException or InvalidComObjectException)
             {
             }
+            UnregisterChat();
             Marshal.FinalReleaseComObject(_manager);
         }
+        _debounce.Stop();
         _manager = null;
         _lines = null;
         _chatReader = 0;
         User = null;
     }
 
-    public void Dispose() => Disconnect();
+    public void Dispose()
+    {
+        Disconnect();
+        _debounce.Dispose();
+    }
 }

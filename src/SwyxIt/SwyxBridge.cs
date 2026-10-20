@@ -52,6 +52,8 @@ internal sealed class SwyxBridge
         // Brim schickt auf seinem Thread; COM gehört dem STA-Thread.
         _brim.ActionInvoked += (action, _) => _sta.Post(_ => OnAction(action), null);
         _brim.NotificationPosted += n => _sta.Post(_ => OnChat(new ChatItem(n.Title, n.Body, DateTime.Now, Messenger: true)), null);
+        _audio.LevelChanged += level => _sta.Post(_ => OnLevel(level), null);
+        _brim.SettingsChanged += _ => _sta.Post(_ => ApplySettings(), null);
         _brim.NotchExpandedChanged += expanded => _sta.Post(_ =>
         {
             if (!expanded)
@@ -61,31 +63,52 @@ internal sealed class SwyxBridge
         }, null);
     }
 
-    private bool ShowChat => !_brim.Settings.TryGetValue("chat", out var value) || value.ValueKind != System.Text.Json.JsonValueKind.False;
+    private bool ShowChat => Setting("chat");
+
+    private void ApplySettings()
+    {
+        // Ohne Angabe aus: siehe SwyxClient.ReadChat.
+        _swyx.ReadChat = _brim.Settings.TryGetValue("swyxitChat", out var value) && value.ValueKind == System.Text.Json.JsonValueKind.True;
+        UpdateAudio();
+    }
 
     public void Start()
     {
+        ApplySettings();
         _swyx.TryConnect();
         PublishStatus();
     }
 
     /// <summary>
-    /// Etwa 15-mal pro Sekunde, solange ein Gespräch läuft: Der Lichtschein am unteren Rand schwingt mit der Stimme
-    /// des Anrufers. Gesendet wird nur, wenn er sich sichtbar ändert.
+    /// Neuer Pegel vom Mess-Thread: Der Lichtschein am unteren Rand schwingt mit der Stimme des Anrufers.
     /// </summary>
-    public void GlowTick()
+    private void OnLevel(double level)
     {
-        if (_current.Calls.FirstOrDefault(c => c.State == LineState.Active) is not { } call || _swyx.Transfer?.To == call.Line)
+        if (!_audio.Running)
         {
             return;
         }
-        var glow = CallTracker.Glow(_glow, _audio.Peak());
-        if (Math.Abs(glow - _glow) < 0.02)
+        _glow = level;
+        if (ActiveCall() is { } call)
         {
-            return;
+            Send(_brim.SetActivityAsync(TalkActivity(call)));
         }
-        _glow = glow;
-        Send(_brim.SetActivityAsync(TalkActivity(call)));
+    }
+
+    private LineSnapshot? ActiveCall() =>
+        _current.Calls.FirstOrDefault(c => c.State == LineState.Active && _swyx.Transfer?.To != c.Line);
+
+    private bool Setting(string key) => !_brim.Settings.TryGetValue(key, out var value) || value.ValueKind != System.Text.Json.JsonValueKind.False;
+
+    /// <summary>Messen nur, solange ein Gespräch läuft und der Lichtschein gewünscht ist.</summary>
+    private void UpdateAudio()
+    {
+        var run = Setting("glow") && ActiveCall() is not null;
+        if (!run)
+        {
+            _glow = 0;
+        }
+        _audio.Running = run;
     }
 
     /// <summary>Jede Sekunde: Verbindung herstellen, Gesprächsdauer, Klingeln erneuern.</summary>
@@ -157,10 +180,7 @@ internal sealed class SwyxBridge
             }
             Send(_brim.SetActivityAsync(TalkActivity(call)));
         }
-        if (changes.Calls.Count == 0)
-        {
-            _glow = 0;
-        }
+        UpdateAudio();
         if (!_swyx.IsConnected)
         {
             PublishStatus();
